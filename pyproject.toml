@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "universal-drm"
+version = "0.1.0"
+description = "View PDFs, images, text and video in the browser without handing over the file."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "Pillow>=10.1",
+    "pypdfium2>=4.20,<6",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+demo = ["Flask>=3"]
+
+[project.urls]
+Homepage = "https://github.com/neelmali182/UniversalDRM"
+
+[tool.setuptools]
+packages = ["universal_drm"]
+
+[tool.setuptools.package-data]
+universal_drm = ["static/*"]
