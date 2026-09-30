@@ -40,7 +40,8 @@ def embed_forensic(image: Image.Image, payload: bytes) -> Image.Image:
         raise ValueError(f"Forensic payload too large: {len(payload)} > {_MAX_PAYLOAD} bytes")
 
     img = image.convert("RGB")
-    pixels = list(img.getdata())
+    # Access pixel data via bytes for future Pillow compatibility
+    pixels = list(img.getdata())  # type: ignore[arg-type]
 
     # Build bit string: MAGIC (4 B) + length (1 B) + payload
     raw = _MAGIC + struct.pack("B", len(payload)) + payload
@@ -69,7 +70,7 @@ def extract_forensic(image: Image.Image) -> Optional[bytes]:
     Returns the raw payload bytes, or *None* if no payload is found.
     """
     img = image.convert("RGB")
-    pixels = list(img.getdata())
+    pixels = list(img.getdata())  # type: ignore[arg-type]
 
     # Read the first (4+1)*8 = 40 bits to check magic + length
     header_bits = [p[2] & 1 for p in pixels[:40]]

@@ -19,10 +19,17 @@ class LocalStorageProvider:
         self._base.mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:
-        # Prevent path traversal
-        safe = key.replace("..", "").lstrip("/\\")
-        p = (self._base / safe).resolve()
-        if not str(p).startswith(str(self._base.resolve())):
+        """Resolve storage key to an absolute path, blocking path traversal."""
+        # Block keys that contain path traversal components before resolution
+        parts = Path(key).parts
+        if any(part in ("..", ".") for part in parts):
+            raise ValueError(f"Invalid storage key: {key!r}")
+        p = (self._base / key).resolve()
+        base_resolved = self._base.resolve()
+        # Ensure the resolved path is inside the base directory (cross-platform)
+        try:
+            p.relative_to(base_resolved)
+        except ValueError:
             raise ValueError(f"Invalid storage key: {key!r}")
         return p
 

@@ -20,8 +20,8 @@ router = APIRouter(tags=["shares"])
 class PolicyInput(BaseModel):
     view: bool = True
     download: bool = False
-    copy: bool = False
-    print: bool = False
+    allow_copy: bool = Field(False, alias="copy")
+    allow_print: bool = Field(False, alias="print")
     expires_in: int = Field(3600, description="Seconds until share expires; 0 = no expiry")
     one_time: bool = False
     max_sessions: int = Field(0, description="0 = unlimited")
@@ -29,6 +29,8 @@ class PolicyInput(BaseModel):
     recipients: list[str] = Field(default_factory=list, description="Email allowlist; empty = any authenticated")
     watermark_visible: bool = True
     watermark_forensic: bool = True
+
+    model_config = {"populate_by_name": True}
 
 
 class ShareCreateRequest(BaseModel):

@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System deps for rendering and Office conversion
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml ./
+COPY packages/ ./packages/
+COPY apps/ ./apps/
+COPY sdk/ ./sdk/
+COPY universal_drm/ ./universal_drm/
+
+RUN pip install --no-cache-dir -e ".[api]"
+
+# Worker command is overridden in docker-compose.yml per worker type
+CMD ["celery", "-A", "apps.api.celery_app", "worker", "--loglevel=info", "-Q", "documents"]
