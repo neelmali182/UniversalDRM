@@ -1,0 +1,135 @@
+version: "3.9"
+
+services:
+  # -------------------------------------------------------------------
+  # API service
+  # -------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+      DATABASE_URL: postgresql+asyncpg://udrm:udrm@postgres:5432/universaldrm
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_PROVIDER: local
+      STORAGE_LOCAL_DIR: /data/objects
+      KMS_PROVIDER: local
+      SECRET_KEY: dev-secret-change-in-production
+      ALLOWED_ORIGINS: "http://localhost:5173,http://localhost:3000"
+      SESSION_TTL: "600"
+      RESOURCE_TOKEN_TTL: "60"
+      SHARE_TTL: "3600"
+      OTP_TTL: "600"
+      MAX_UPLOAD_MB: "500"
+    volumes:
+      - ./:/app
+      - udrm_objects:/data/objects
+      - udrm_keys:/root/.universaldrm
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # -------------------------------------------------------------------
+  # Document/image processing worker
+  # -------------------------------------------------------------------
+  worker-documents:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://udrm:udrm@postgres:5432/universaldrm
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_PROVIDER: local
+      STORAGE_LOCAL_DIR: /data/objects
+      KMS_PROVIDER: local
+    volumes:
+      - ./:/app
+      - udrm_objects:/data/objects
+      - udrm_keys:/root/.universaldrm
+    depends_on:
+      - redis
+      - postgres
+    # TODO: replace with Celery worker command in Phase 1
+    command: echo "Worker placeholder — Celery integration in Phase 1"
+
+  # -------------------------------------------------------------------
+  # PostgreSQL 16
+  # -------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: universaldrm
+      POSTGRES_USER: udrm
+      POSTGRES_PASSWORD: udrm
+    ports:
+      - "5432:5432"
+    volumes:
+      - udrm_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U udrm -d universaldrm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------------
+  # Redis (cache, rate limiting, Celery broker)
+  # -------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # -------------------------------------------------------------------
+  # MinIO (S3-compatible object storage for dev)
+  # -------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - udrm_minio:/data
+    command: server /data --console-address ":9001"
+
+  # -------------------------------------------------------------------
+  # MailHog (OTP email capture in dev)
+  # -------------------------------------------------------------------
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+
+  # -------------------------------------------------------------------
+  # ClamAV (malware scanning — §11)
+  # -------------------------------------------------------------------
+  clamav:
+    image: clamav/clamav:stable
+    ports:
+      - "3310:3310"
+    volumes:
+      - udrm_clamav:/var/lib/clamav
+
+volumes:
+  udrm_postgres:
+  udrm_redis:
+  udrm_minio:
+  udrm_objects:
+  udrm_keys:
+  udrm_clamav:
