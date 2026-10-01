@@ -55,7 +55,7 @@
 
 UniversalDRM lets an application show sensitive content to a recipient **inside the browser** while never giving them the original file.
 
-Documents are rasterized **on the server**. A per-viewer **watermark is burned into the pixels** before anything leaves the server. The browser only ever receives watermarked page images and draws them onto `<canvas>` elements. There is no PDF to save, no image to right-click, and no text layer to copy. Any screenshot or photo of the screen carries the viewer's identity.
+Documents are rasterized **on the server** and drawn onto `<canvas>` elements; the original file and text layer are not sent to the browser. Integrations may burn a visible watermark into server-rendered pixels. The standalone viewer instead displays clean pages and adds a temporary watermark only when browser-visible capture signals fire. That detection is best-effort: an OS recorder or camera can capture a page without a watermark.
 
 > **Design philosophy:** make casual extraction impractical, make every capture traceable, and be explicit about what a website cannot do. UniversalDRM does not claim to block screenshots. No browser-only system can.
 
@@ -135,7 +135,7 @@ A determined viewer **can** still capture what is on screen, for example with:
 - a screen recorder started beforehand,
 - a well-timed OS snipping shortcut (such as Win+Shift+S).
 
-What they capture **carries the watermark**. That is the point: it identifies who leaked it.
+When the viewer detects a capture-related signal, it briefly overlays the viewer identity. A recorder started before viewing, unsupported capture software, or a camera may not trigger that overlay, so captures are not guaranteed to carry a watermark.
 
 **Video is weaker than documents.** The video file itself is streamed to the browser, so the watermark is drawn *over the player* rather than burned into the frames. A viewer can remove an overlay. Treat video protection as deterrence plus access control.
 
@@ -147,20 +147,20 @@ Every protection falls into one of three classes. Keep this distinction in your 
 
 | Class | Meaning | Examples in UniversalDRM |
 |---|---|---|
-| **Enforced** | The server refuses, even against a hostile client. | No original-file endpoint exists; watermark burned server-side; session status checks; access revocation (via your app) |
+| **Enforced** | The server refuses, even against a hostile client. | No original-file endpoint exists; session status checks; access revocation (via your app) |
 | **Best-effort** | Client-side deterrence. A determined user with DevTools can bypass it. | Shortcut blocking, context-menu blocking, blur-on-blur, clipboard clearing, print suppression |
-| **Traceability** | Does not prevent capture; identifies the source. | Burned-in watermark on every page image |
+| **Traceability** | Does not prevent capture; may identify the source. | Server-burned watermark when enabled; temporary client overlay on detected capture signals |
 
 ### Threat summary
 
 | Threat | Mitigation | Residual risk |
 |---|---|---|
 | Casual save/copy/print | Canvas rendering, deterrence layer | Low |
-| Network-tab scraping of originals | Originals never sent; only watermarked JPEGs | Low |
-| Watermark removal | Burned into pixels server-side | Low (croppable for partial captures) |
+| Network-tab scraping of originals | Originals never sent; authorized sessions receive rendered page images | Medium: page images can still be fetched by an authorized client |
+| Watermark removal | Server-burned watermark only when enabled | Depends on the rendering integration |
 | Link/session sharing | **Your app** must bind sessions to identity (see [Integration Guide](#integration-guide)) | Depends on your auth |
 | Bulk page scraping with a valid session | **Your app** should rate-limit page requests per session | Medium without rate limits |
-| Screenshot / photo / screen recording | Watermark for traceability | Not preventable in-browser |
+| Screenshot / photo / screen recording | Best-effort overlay on detected signals | Not reliably detectable or preventable in-browser; captures may be unwatermarked |
 | Cache reuse of page images | `Cache-Control: no-store` (your route) | Low if configured |
 
 ## Supported Content
@@ -182,7 +182,7 @@ pip install "universal-drm @ git+https://github.com/neelmali182/UniversalDRM@v0.
 
 **Requirements**
 
-- Python 3.10 or newer
+- Python 3.11 or newer
 - Pillow and pypdfium2 (installed automatically, prebuilt wheels, no system packages)
 
 ## Quick Start

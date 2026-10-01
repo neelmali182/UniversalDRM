@@ -11,7 +11,6 @@ is also bound to its AAD.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 from .envelope import decrypt_blob, encrypt_blob, generate_dek

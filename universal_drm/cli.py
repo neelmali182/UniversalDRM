@@ -143,7 +143,7 @@ def run_viewer(path: str, host: str = "0.0.0.0", port: int = 5050, watermark_tex
 
     print(f"\n[✓] UniversalDRM Viewer serving: {path}")
     print(f"    URL: http://{host if host != '0.0.0.0' else '127.0.0.1'}:{port}")
-    print(f"    Capture resistance: ACTIVE (Watermark revealed on screenshots & recordings)")
+    print("    Capture signals: best-effort browser detection; external recording may bypass watermark")
     app.run(host=host, port=port)
 
 
@@ -156,7 +156,7 @@ def run_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
         sys.exit(1)
 
     display_host = "localhost" if host == "0.0.0.0" else host
-    print(f"\n[+] UniversalDRM API Server Running!")
+    print("\n[+] UniversalDRM API Server Running!")
     print(f"    --> Open in browser: http://{display_host}:{port}")
     print(f"    --> Interactive Docs: http://{display_host}:{port}/docs\n")
     uvicorn.run("apps.api.main:app", host=host, port=port, reload=reload)

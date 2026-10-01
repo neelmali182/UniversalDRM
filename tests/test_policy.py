@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 import pytest
 from packages.policy_engine.schema import Policy
-from packages.policy_engine.evaluator import PolicyEvaluator, Decision, DenyReason, EvaluationContext
+from packages.policy_engine.evaluator import PolicyEvaluator, DenyReason, EvaluationContext
 
 
 def _now():
@@ -129,3 +129,10 @@ def test_policy_roundtrip_to_dict():
     restored = Policy.from_dict(d)
     assert restored.enforced.recipients == ["alice@example.com"]
     assert restored.enforced.expires_in == 7200
+
+
+def test_policy_from_dict_does_not_mutate_input():
+    source = {"enforced": {"rate_limits": {"pages_per_minute": 7}}}
+    original = {"enforced": {"rate_limits": {"pages_per_minute": 7}}}
+    Policy.from_dict(source)
+    assert source == original

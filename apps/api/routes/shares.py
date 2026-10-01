@@ -5,12 +5,16 @@ import hashlib
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from apps.api.config import settings
+from packages.core.enums import AssetStatus
+from .assets import _assets
+from ..security import require_api_key
 
-router = APIRouter(tags=["shares"])
+router = APIRouter(tags=["shares"], dependencies=[Depends(require_api_key)])
 
 
 # ---------------------------------------------------------------------------
@@ -22,20 +26,22 @@ class PolicyInput(BaseModel):
     download: bool = False
     allow_copy: bool = Field(False, alias="copy")
     allow_print: bool = Field(False, alias="print")
-    expires_in: int = Field(3600, description="Seconds until share expires; 0 = no expiry")
+    expires_in: int = Field(3600, ge=0, description="Seconds until share expires; 0 = no expiry")
     one_time: bool = False
-    max_sessions: int = Field(0, description="0 = unlimited")
-    max_devices: int = Field(0, description="0 = unlimited")
+    max_sessions: int = Field(0, ge=0, description="0 = unlimited")
+    max_devices: int = Field(0, ge=0, description="0 = unlimited")
     recipients: list[str] = Field(default_factory=list, description="Email allowlist; empty = any authenticated")
     watermark_visible: bool = True
     watermark_forensic: bool = True
+    pages_per_minute: int = Field(20, ge=0, le=10_000, description="0 = unlimited")
+    max_pages_total: int = Field(200, ge=0, le=1_000_000, description="0 = unlimited")
 
     model_config = {"populate_by_name": True}
 
 
 class ShareCreateRequest(BaseModel):
-    policy: PolicyInput = Field(default_factory=PolicyInput)
-    identity_mode: str = Field("otp", description="otp | open")
+    policy: PolicyInput = Field(default_factory=lambda: PolicyInput())
+    identity_mode: Literal["otp"] = Field("otp", description="Only OTP identity verification is supported")
 
 
 class ShareResponse(BaseModel):
@@ -54,7 +60,9 @@ class ShareResponse(BaseModel):
 # In-memory store (stub — replace with DB in Phase 0)
 # ---------------------------------------------------------------------------
 
-_shares: dict[str, dict] = {}
+from typing import Any
+
+_shares: dict[str, dict[str, Any]] = {}
 
 
 def _now() -> datetime:
@@ -62,8 +70,7 @@ def _now() -> datetime:
 
 
 def _viewer_url(token: str) -> str:
-    # TODO: pull base URL from settings
-    return f"http://localhost:8000/v/{token}"
+    return f"{settings.public_base_url.rstrip('/')}/v/{token}"
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +89,12 @@ async def create_share(asset_id: str, body: ShareCreateRequest):
     The raw token is returned ONCE on creation; thereafter only its hash is
     stored (§9.1).  The viewer URL embeds the token.
     """
+    asset = _assets.get(asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset["status"] != AssetStatus.UPLOADED:
+        raise HTTPException(status_code=409, detail="Asset must be fully uploaded before sharing it")
+
     # Generate high-entropy share token
     token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -91,18 +104,19 @@ async def create_share(asset_id: str, body: ShareCreateRequest):
     if body.policy.expires_in > 0:
         expires_at = _now() + timedelta(seconds=body.policy.expires_in)
 
-    policy_dict = body.policy.model_dump()
+    policy_dict = body.policy.model_dump(by_alias=True)
 
     share = {
         "id": share_id,
         "asset_id": asset_id,
-        "token": token,
         "token_hash": token_hash,
         "policy": policy_dict,
         "identity_mode": body.identity_mode,
         "expires_at": expires_at,
         "revoked": False,
         "created_at": _now(),
+        "consumed": False,
+        "active_sessions": 0,
     }
     _shares[share_id] = share
 
@@ -132,7 +146,7 @@ async def get_share(share_id: str):
     return ShareResponse(
         id=share["id"],
         asset_id=share["asset_id"],
-        url=_viewer_url("[redacted]"),
+        url="",
         token="[redacted]",  # Token is stored as hash only after creation
         policy=share["policy"],
         identity_mode=share["identity_mode"],

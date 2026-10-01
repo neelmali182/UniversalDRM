@@ -62,9 +62,28 @@ class Settings:
 
     # Security
     secret_key: str = field(default_factory=lambda: _env("SECRET_KEY", "change-me-in-production"))
+    api_key: str = field(default_factory=lambda: _env(
+        "API_KEY",
+        "local-development-api-key" if _env("APP_ENV", "development") == "development" else "",
+    ))
+    public_base_url: str = field(default_factory=lambda: _env("PUBLIC_BASE_URL", "http://localhost:8000"))
+    smtp_host: str = field(default_factory=lambda: _env("SMTP_HOST", "localhost"))
+    smtp_port: int = field(default_factory=lambda: _env_int("SMTP_PORT", 1025))
+    smtp_from: str = field(default_factory=lambda: _env("SMTP_FROM", "noreply@universaldrm.local"))
+    smtp_tls: bool = field(default_factory=lambda: _env_bool("SMTP_TLS", False))
+    smtp_username: str = field(default_factory=lambda: _env("SMTP_USERNAME"))
+    smtp_password: str = field(default_factory=lambda: _env("SMTP_PASSWORD"))
     allowed_origins: list[str] = field(default_factory=lambda: [
         o.strip() for o in _env("ALLOWED_ORIGINS", "http://localhost:5173").split(",") if o.strip()
     ])
+
+    def __post_init__(self) -> None:
+        if not self.is_development and len(self.api_key) < 32:
+            raise ValueError("API_KEY must be configured with at least 32 characters outside development")
+        if not self.is_development and len(self.secret_key) < 32:
+            raise ValueError("SECRET_KEY must be configured with at least 32 characters outside development")
+        if not self.is_development and not self.smtp_tls:
+            raise ValueError("SMTP_TLS must be enabled outside development")
 
     @property
     def is_development(self) -> bool:

@@ -1,7 +1,11 @@
 """Local filesystem storage provider (dev / test) (§8.3)."""
 from __future__ import annotations
 
+import hashlib
+import os
+import tempfile
 from pathlib import Path
+from typing import BinaryIO
 
 
 class LocalStorageProvider:
@@ -39,6 +43,29 @@ class LocalStorageProvider:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
 
+    def put_stream(self, key: str, source: BinaryIO, max_bytes: int) -> tuple[int, str]:
+        """Write a bounded stream atomically and return its byte count and SHA-256."""
+        path = self._path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256()
+        size = 0
+        temporary_path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temporary:
+                temporary_path = temporary.name
+                while chunk := source.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise ValueError("Upload exceeds the configured size limit")
+                    digest.update(chunk)
+                    temporary.write(chunk)
+            os.replace(temporary_path, path)
+            temporary_path = None
+            return size, digest.hexdigest()
+        finally:
+            if temporary_path:
+                Path(temporary_path).unlink(missing_ok=True)
+
     def get(self, key: str) -> bytes:
         """Read and return bytes at *key*."""
         path = self._path(key)
@@ -54,3 +81,10 @@ class LocalStorageProvider:
     def exists(self, key: str) -> bool:
         """Return True if *key* exists."""
         return self._path(key).exists()
+
+    def path_for(self, key: str) -> Path:
+        """Return a validated local path for server-side streaming readers."""
+        path = self._path(key)
+        if not path.is_file():
+            raise FileNotFoundError(f"Object not found: {key!r}")
+        return path

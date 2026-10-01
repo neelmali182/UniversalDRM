@@ -15,6 +15,7 @@ between assets (§12.1 "AAD binding").
 from __future__ import annotations
 
 import os
+from packages.core.protocols import KeyProvider
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -57,7 +58,7 @@ def envelope_encrypt(
     tenant_id: str,
     asset_id: str,
     version: int,
-    key_provider: object,
+    key_provider: KeyProvider,
 ) -> tuple[bytes, bytes]:
     """Encrypt *plaintext* and return ``(ciphertext, wrapped_dek)``.
 
@@ -88,7 +89,7 @@ def envelope_decrypt(
     tenant_id: str,
     asset_id: str,
     version: int,
-    key_provider: object,
+    key_provider: KeyProvider,
 ) -> bytes:
     """Decrypt *ciphertext* using the wrapped DEK and KEK from *key_provider*.
 

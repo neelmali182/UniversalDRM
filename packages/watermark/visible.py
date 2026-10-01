@@ -50,22 +50,22 @@ def burn_visible(
     step_y = th + size * 5
 
     # Draw on a square large enough to cover the page after rotation
-    side = int(math.hypot(w, h)) + step_x
-    layer = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    side = int(math.hypot(w, h)) + int(step_x)
+    layer = Image.new("RGBA", (int(side), int(side)), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
     fill = (128, 128, 128, int(255 * opacity))
 
     # Random per-session offset so that averaging multiple copies does not
     # cancel the watermark (§14.1 "randomized offsets per session")
-    rand_x = rng.randint(0, step_x)
-    rand_y = rng.randint(0, step_y)
+    rand_x = rng.randint(0, int(step_x))
+    rand_y = rng.randint(0, int(step_y))
 
-    for row, y in enumerate(range(-rand_y, side, step_y)):
-        offset = (step_x // 2) * (row % 2)
-        for x in range(-step_x + offset - rand_x, side, step_x):
+    for row, y in enumerate(range(-int(rand_y), side, int(step_y))):
+        offset = (int(step_x) // 2) * (row % 2)
+        for x in range(-int(step_x) + offset - int(rand_x), side, int(step_x)):
             draw.text((x, y), text, font=font, fill=fill)
 
-    layer = layer.rotate(angle, resample=Image.BICUBIC)
+    layer = layer.rotate(angle, resample=Image.Resampling.BICUBIC)
     cx, cy = (side - w) // 2, (side - h) // 2
     layer = layer.crop((cx, cy, cx + w, cy + h))
     return Image.alpha_composite(base, layer).convert("RGB")

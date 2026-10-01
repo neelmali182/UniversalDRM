@@ -44,14 +44,26 @@ class AssetsModule:
         r.raise_for_status()
         asset = r.json()
 
-        # 2. Compute checksum
-        data = file_path.read_bytes()
-        checksum = hashlib.sha256(data).hexdigest()
+        # 2. Transfer the content; the server independently checks its signature and digest.
+        with file_path.open("rb") as source:
+            upload = self._http.put(
+                f"/v1/assets/{asset['id']}/content",
+                files={"file": (display_name, source, mime_type)},
+            )
+        upload.raise_for_status()
 
-        # 3. Complete upload
+        # 3. Compute the completion digest without buffering the full file.
+        digest = hashlib.sha256()
+        size = 0
+        with file_path.open("rb") as source:
+            while chunk := source.read(1024 * 1024):
+                digest.update(chunk)
+                size += len(chunk)
+
+        # 4. Complete upload
         r2 = self._http.post(
             f"/v1/assets/{asset['id']}/complete",
-            json={"checksum": checksum, "size": len(data)},
+            json={"checksum": digest.hexdigest(), "size": size},
         )
         r2.raise_for_status()
         return r2.json()

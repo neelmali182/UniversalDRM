@@ -1,5 +1,4 @@
 """Tests for envelope encryption and LocalKeyProvider (§12)."""
-import os
 import pytest
 from packages.crypto.envelope import (
     generate_dek,

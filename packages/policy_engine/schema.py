@@ -11,7 +11,7 @@ can distinguish server-enforced controls from browser-side deterrence
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -93,7 +93,7 @@ class Policy:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Policy":
         """Deserialize from a plain dict (e.g., from JSON storage)."""
-        enforced_data = data.get("enforced", {})
+        enforced_data = dict(data.get("enforced", {}))
         rate_data = enforced_data.pop("rate_limits", {})
         enforced = EnforcedPolicy(
             **{k: v for k, v in enforced_data.items() if k in EnforcedPolicy.__dataclass_fields__},

@@ -3,7 +3,7 @@
 Usage:
     from sdk.python import Client
 
-    drm = Client(api_key="udrm_live_xxx", base_url="http://localhost:8000")
+    drm = Client(api_key="local-development-api-key", base_url="http://localhost:8000")
 
     asset = drm.assets.upload("confidential.pdf")
 
@@ -26,9 +26,6 @@ Usage:
 """
 from __future__ import annotations
 
-import hashlib
-import mimetypes
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -41,7 +38,8 @@ class Client:
     """UniversalDRM API client.
 
     Args:
-        api_key: Developer API key (``udrm_live_...`` or ``udrm_test_...``).
+        api_key: Value configured in ``API_KEY`` on the API server. Development defaults to
+            ``local-development-api-key``; production requires a strong configured secret.
         base_url: Base URL of the API server.
         timeout: HTTP request timeout in seconds.
     """

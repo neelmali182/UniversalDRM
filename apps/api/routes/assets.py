@@ -1,18 +1,20 @@
 """Asset routes — upload, protect, lifecycle (§19)."""
 from __future__ import annotations
 
-import hashlib
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from pydantic import BaseModel, Field
 
+from apps.api.config import settings
 from packages.core.enums import AssetStatus, ContentType, ContentFormat, ProtectionEngine
 from packages.core.classification import classify
+from packages.storage.local import LocalStorageProvider
+from ..security import require_api_key
 
-router = APIRouter(tags=["assets"])
+router = APIRouter(tags=["assets"], dependencies=[Depends(require_api_key)])
 
 
 # ---------------------------------------------------------------------------
@@ -39,8 +41,8 @@ class AssetResponse(BaseModel):
 
 
 class AssetUploadCompleteRequest(BaseModel):
-    checksum: str = Field(..., description="SHA-256 hex digest of uploaded file")
-    size: int
+    checksum: str = Field(..., pattern=r"^[0-9a-fA-F]{64}$", description="SHA-256 hex digest of uploaded file")
+    size: int = Field(..., ge=1)
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +50,27 @@ class AssetUploadCompleteRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 _assets: dict[str, dict] = {}
+_storage = LocalStorageProvider(settings.storage_local_dir)
+_SUPPORTED_UPLOAD_MIMES = {
+    "application/pdf", "text/plain", "image/png", "image/jpeg", "image/gif", "image/webp",
+}
+
+
+def _sniff_mime(prefix: bytes, mime_type: str) -> str | None:
+    normalized = mime_type.lower().split(";")[0].strip()
+    if prefix.startswith(b"%PDF-"):
+        return "application/pdf"
+    if prefix.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if prefix.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if prefix.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if prefix.startswith(b"RIFF") and prefix[8:12] == b"WEBP":
+        return "image/webp"
+    if normalized == "text/plain" and b"\x00" not in prefix:
+        return "text/plain"
+    return None
 
 
 def _now() -> datetime:
@@ -70,14 +93,17 @@ async def create_asset(body: AssetCreateRequest):
     The MIME type must come from magic-byte detection on the client side,
     not from the filename extension (§8.2).
     """
-    content_type, content_format, engine = classify(body.mime_type)
+    normalized_mime = body.mime_type.lower().split(";")[0].strip()
+    if normalized_mime not in _SUPPORTED_UPLOAD_MIMES:
+        raise HTTPException(status_code=415, detail="This MIME type is not supported by the configured renderer")
+    content_type, content_format, engine = classify(normalized_mime)
     asset_id = str(uuid.uuid4())
     now = _now()
 
     asset = {
         "id": asset_id,
         "name": body.name,
-        "mime_type": body.mime_type,
+        "mime_type": normalized_mime,
         "content_type": content_type,
         "content_format": content_format,
         "engine": engine,
@@ -86,9 +112,55 @@ async def create_asset(body: AssetCreateRequest):
         "page_count": None,
         "created_at": now,
         "updated_at": now,
+        "storage_key": asset_id,
+        "upload_checksum": None,
     }
     _assets[asset_id] = asset
-    return AssetResponse(**asset)
+    return AssetResponse(
+        id=asset["id"],
+        name=asset["name"],
+        mime_type=asset["mime_type"],
+        content_type=asset["content_type"],
+        content_format=asset["content_format"],
+        engine=asset["engine"],
+        status=asset["status"],
+        size=asset["size"],
+        page_count=asset["page_count"],
+        created_at=asset["created_at"],
+        updated_at=asset["updated_at"],
+    )
+
+
+@router.put("/assets/{asset_id}/content", status_code=status.HTTP_204_NO_CONTENT, summary="Upload asset bytes")
+async def upload_asset_content(asset_id: str, file: UploadFile = File(...)):
+    asset = _assets.get(asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset["status"] != AssetStatus.UPLOADING:
+        raise HTTPException(status_code=409, detail="Asset is not accepting an upload")
+    if not settings.is_development:
+        raise HTTPException(
+            status_code=501,
+            detail="Secure ingestion is unavailable until encrypted storage and malware scanning are configured",
+        )
+
+    prefix = file.file.read(16)
+    file.file.seek(0)
+    detected_mime = _sniff_mime(prefix, asset["mime_type"])
+    declared_mime = asset["mime_type"].lower().split(";")[0].strip()
+    if detected_mime != declared_mime:
+        raise HTTPException(status_code=415, detail="Uploaded content does not match the declared supported MIME type")
+
+    try:
+        size, checksum = _storage.put_stream(asset["storage_key"], file.file, settings.max_upload_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    if size == 0:
+        _storage.delete(asset["storage_key"])
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    asset["size"] = size
+    asset["upload_checksum"] = checksum
+    asset["updated_at"] = _now()
 
 
 @router.post(
@@ -97,22 +169,23 @@ async def create_asset(body: AssetCreateRequest):
     summary="Finish upload and enqueue processing",
 )
 async def complete_upload(asset_id: str, body: AssetUploadCompleteRequest):
-    """Mark the upload complete and transition to PROCESSING.
+    """Mark the upload complete after verifying the stored bytes.
 
-    In production: validate checksum, enqueue ENCRYPT_ASSET job,
-    run ClamAV scan, magic-byte re-validate (§11).
+    Malware scanning and encryption require the background worker, which is not wired yet.
     """
     asset = _assets.get(asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     if asset["status"] != AssetStatus.UPLOADING:
         raise HTTPException(status_code=409, detail="Asset is not in UPLOADING state")
+    if asset["upload_checksum"] is None:
+        raise HTTPException(status_code=409, detail="Upload file content before completing the upload")
+    if body.size != asset["size"] or body.checksum.lower() != asset["upload_checksum"]:
+        raise HTTPException(status_code=400, detail="Uploaded size or checksum does not match stored content")
 
-    asset["size"] = body.size
-    asset["status"] = AssetStatus.PROCESSING
+    asset["status"] = AssetStatus.UPLOADED
     asset["updated_at"] = _now()
 
-    # TODO: enqueue ENCRYPT_ASSET + MALWARE_SCAN jobs via Celery (§21.1)
     return AssetResponse(**asset)
 
 
@@ -143,6 +216,7 @@ async def delete_asset(asset_id: str):
     asset = _assets.pop(asset_id, None)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
+    _storage.delete(asset["storage_key"])
     # TODO: delete from object storage, delete DEK, write audit tombstone
 
 
@@ -152,9 +226,9 @@ async def delete_asset(asset_id: str):
     summary="Trigger protection pipeline",
 )
 async def protect_asset(asset_id: str):
-    """Enqueue the protection pipeline for an uploaded asset.
+    """Report that the protection pipeline is not configured.
 
-    In production: enqueue RENDER_PDF / ENCRYPT_ASSET jobs (§21.1).
+    The API must not report success until a real worker has processed the asset.
     """
     asset = _assets.get(asset_id)
     if not asset:
@@ -162,7 +236,4 @@ async def protect_asset(asset_id: str):
     if asset["status"] not in (AssetStatus.UPLOADED, AssetStatus.PROCESSING):
         raise HTTPException(status_code=409, detail="Asset must be UPLOADED or PROCESSING")
 
-    asset["status"] = AssetStatus.PROCESSING
-    asset["updated_at"] = _now()
-    # TODO: enqueue protection job
-    return AssetResponse(**asset)
+    raise HTTPException(status_code=501, detail="Protection worker is not configured")

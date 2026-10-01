@@ -5,18 +5,17 @@
  *     kind: 'pages',                     // or 'video'
  *     pages: 12, pageUrl: i => `/doc/page/${i}`,
  *     videoUrl: '/doc/video', videoType: 'video/mp4',
- *     watermark: 'Alice · #1a2b3c',      // dynamic watermark for screenshots & screen recording
+ *     watermark: 'Alice · #1a2b3c',      // temporary watermark for detected capture-related signals
  *     statusUrl: '/doc/status',          // polled; a non-2xx reply or {active:false} wipes the content
  *     statusInterval: 15,
  *     onEnd: reason => {}
  *   });
  *
- * Dynamic Anti-Capture Protection:
- * - Webpage image remains clean and unobstructed during normal viewing.
- * - Temporal Persistence-of-Vision (POV) modulation (flicker fusion) ensures that screen
- *   recorders (OBS, Windows Game Bar, Zoom, etc.) capture the watermark due to frame aliasing.
- * - Instant Capture Mode arms full-contrast watermarks whenever screenshots (PrintScreen,
- *   Windows Snipping Tool / Win+Shift+S, focus loss) or recording actions are detected.
+ * Best-effort capture deterrence:
+ * - Webpage images remain clean during normal viewing.
+ * - The viewer can react to browser-visible signals such as screenshot keys, focus loss,
+ *   printing, or getDisplayMedia calls. It cannot reliably detect external recorders.
+ * - A capture may therefore contain no watermark; this is not capture prevention.
  */
 (function (global) {
   'use strict';

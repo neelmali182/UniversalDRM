@@ -9,14 +9,20 @@ Versioned under /v1. Routes:
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+from datetime import datetime, timezone
+from html import escape
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 from .config import settings
 from .middleware.security_headers import SecurityHeadersMiddleware
 from .routes import assets, shares, viewer, audit
+from .routes.shares import _shares
 
 
 @asynccontextmanager
@@ -69,6 +75,45 @@ def create_app() -> FastAPI:
     app.include_router(shares.router, prefix="/v1")
     app.include_router(viewer.router, prefix="/v1")
     app.include_router(audit.router, prefix="/v1")
+
+    @app.get("/v/{token}", response_class=HTMLResponse, include_in_schema=False)
+    async def share_viewer(token: str):
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        share = next(
+            (item for item in _shares.values() if hmac.compare_digest(item["token_hash"], token_hash)),
+            None,
+        )
+        if not share or share["revoked"]:
+            raise HTTPException(status_code=404, detail="Share not found or revoked")
+        if share["expires_at"] and share["expires_at"] <= datetime.now(timezone.utc):
+            raise HTTPException(status_code=410, detail="Share expired")
+        page = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UniversalDRM shared document</title>
+<link rel="stylesheet" href="/udrm/universal-drm.css">
+</head>
+<body>
+<main id="share-viewer" data-share-token="{escape(token, quote=True)}">
+<h1>Shared document</h1>
+<p id="share-status" role="status">Verify your email to view this document.</p>
+<form id="email-form">
+<label>Email address <input name="email" type="email" autocomplete="email" required></label>
+<button type="submit">Send verification code</button>
+</form>
+<form id="otp-form" hidden>
+<label>Verification code <input name="otp" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button type="submit">Verify and open</button>
+</form>
+<div id="viewer"></div>
+</main>
+<script src="/udrm/universal-drm.js"></script>
+<script src="/udrm/share-viewer.js"></script>
+</body>
+</html>"""
+        return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
     @app.get("/", tags=["info"])
     async def root():
