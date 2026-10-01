@@ -41,8 +41,8 @@ class ImageRenderer:
             raise ValueError(f"ImageRenderer cannot handle MIME type: {mime!r}")
         return 1
 
-    def render_page(self, path: str, mime: str, index: int, watermark: str) -> bytes:
-        """Return JPEG bytes for image at *path* with watermark burned in.
+    def render_page(self, path: str, mime: str, index: int, watermark: str | None = None) -> bytes:
+        """Return JPEG bytes for image at *path* with watermark burned in if provided.
 
         Raises:
             IndexError: If *index* != 0.
@@ -53,9 +53,12 @@ class ImageRenderer:
         if index != 0:
             raise IndexError(index)
         img = self._load_and_prepare(path)
-        watermarked = burn_visible(img, watermark)
         out = BytesIO()
-        watermarked.save(out, "JPEG", quality=self.jpeg_quality, optimize=True)
+        if watermark:
+            watermarked = burn_visible(img, watermark)
+            watermarked.save(out, "JPEG", quality=self.jpeg_quality, optimize=True)
+        else:
+            img.save(out, "JPEG", quality=self.jpeg_quality, optimize=True)
         return out.getvalue()
 
     def _load_and_prepare(self, path: str) -> Image.Image:

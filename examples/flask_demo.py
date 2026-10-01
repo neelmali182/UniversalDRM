@@ -25,7 +25,8 @@ PAGE = """<!doctype html><meta charset="utf-8"><title>UniversalDRM demo</title>
 <script>UniversalDRM.mount(document.getElementById('viewer'), {
   kind: {{ kind|tojson }}, pages: {{ pages }}, pageUrl: i => `/page/${i}`,
   videoUrl: '/video', videoType: {{ mime|tojson }},
-  watermark: {{ watermark|tojson }}, statusUrl: '/status', statusInterval: 10
+    watermark: {{ watermark|tojson }}, statusUrl: '/status', statusInterval: 10,
+    blackoutOnCapture: false
 });</script>"""
 
 
@@ -42,7 +43,8 @@ def index():
 @app.get("/page/<int:index>")
 def page(index):
     try:
-        data = renderer.render_page(PATH, MIME, index, watermark())
+        wm = watermark() if request.args.get("burn") == "1" else None
+        data = renderer.render_page(PATH, MIME, index, wm)
     except IndexError:
         abort(404)
     return send_file(BytesIO(data), mimetype="image/jpeg", max_age=0)

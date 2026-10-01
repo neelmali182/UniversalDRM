@@ -48,8 +48,8 @@ class Renderer:
             return 1
         raise ValueError(f"Cannot render {mime} as pages")
 
-    def render_page(self, path, mime, index, watermark):
-        """JPEG bytes of page ``index`` (0-based) with ``watermark`` burned in. Raises IndexError past the last page."""
+    def render_page(self, path, mime, index, watermark=None):
+        """JPEG bytes of page ``index`` (0-based) with ``watermark`` burned in if provided. Raises IndexError past the last page."""
         if mime == "application/pdf":
             page = self._pdf_page(path, index)
         elif mime == "text/plain":
@@ -61,7 +61,10 @@ class Renderer:
         else:
             raise ValueError(f"Cannot render {mime} as pages")
         out = BytesIO()
-        burn(page, watermark).save(out, "JPEG", quality=self.jpeg_quality, optimize=True)
+        if watermark:
+            burn(page, watermark).save(out, "JPEG", quality=self.jpeg_quality, optimize=True)
+        else:
+            page.save(out, "JPEG", quality=self.jpeg_quality, optimize=True)
         return out.getvalue()
 
     def _pdf_page(self, path, index):

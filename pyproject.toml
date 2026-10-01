@@ -45,6 +45,10 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/neelmali182/UniversalDRM"
 
+[project.scripts]
+udrm = "universal_drm.cli:main"
+universal-drm = "universal_drm.cli:main"
+
 [tool.setuptools]
 packages = [
     "universal_drm",

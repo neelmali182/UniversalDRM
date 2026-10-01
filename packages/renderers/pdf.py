@@ -50,8 +50,8 @@ class PDFRenderer:
             finally:
                 doc.close()
 
-    def render_page(self, path: str, mime: str, index: int, watermark: str) -> bytes:
-        """Return JPEG bytes for page *index* (0-based) with watermark burned in.
+    def render_page(self, path: str, mime: str, index: int, watermark: str | None = None) -> bytes:
+        """Return JPEG bytes for page *index* (0-based) with watermark burned in if provided.
 
         Raises:
             IndexError: If *index* is out of range.
@@ -60,9 +60,12 @@ class PDFRenderer:
         if mime != "application/pdf":
             raise ValueError(f"PDFRenderer cannot handle MIME type: {mime!r}")
         page_image = self._rasterize(path, index)
-        watermarked = burn_visible(page_image, watermark)
         out = BytesIO()
-        watermarked.save(out, "JPEG", quality=self.jpeg_quality, optimize=True)
+        if watermark:
+            watermarked = burn_visible(page_image, watermark)
+            watermarked.save(out, "JPEG", quality=self.jpeg_quality, optimize=True)
+        else:
+            page_image.save(out, "JPEG", quality=self.jpeg_quality, optimize=True)
         return out.getvalue()
 
     def _rasterize(self, path: str, index: int) -> Image.Image:

@@ -55,11 +55,30 @@ def create_app() -> FastAPI:
     # Security headers (HSTS, CSP, etc.) — §15.3
     app.add_middleware(SecurityHeadersMiddleware)
 
+    # Static assets for UniversalDRM viewer
+    import os
+    import universal_drm
+    from fastapi.staticfiles import StaticFiles
+
+    static_path = universal_drm.static_dir()
+    if os.path.exists(static_path):
+        app.mount("/udrm", StaticFiles(directory=static_path), name="udrm")
+
     # Routers
     app.include_router(assets.router, prefix="/v1")
     app.include_router(shares.router, prefix="/v1")
     app.include_router(viewer.router, prefix="/v1")
     app.include_router(audit.router, prefix="/v1")
+
+    @app.get("/", tags=["info"])
+    async def root():
+        return {
+            "name": "UniversalDRM API",
+            "version": "0.1.0",
+            "status": "online",
+            "docs": "/docs",
+            "health": "/v1/health",
+        }
 
     @app.get("/v1/health", tags=["health"])
     async def health():

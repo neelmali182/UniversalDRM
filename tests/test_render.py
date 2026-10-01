@@ -88,3 +88,15 @@ def test_unsupported_type(tmp_path, renderer):
 def test_static_assets_ship_with_package():
     assert os.path.isfile(os.path.join(static_dir(), "universal-drm.js"))
     assert os.path.isfile(os.path.join(static_dir(), "universal-drm.css"))
+
+
+def test_render_page_clean_without_watermark(tmp_path, renderer):
+    path = tmp_path / "doc.txt"
+    path.write_text("Hello Clean World", encoding="utf-8")
+    clean_bytes = renderer.render_page(str(path), "text/plain", 0, watermark=None)
+    clean_img = jpeg(clean_bytes)
+    assert clean_img.size == (1240, 1754)
+    # Rendering with watermark changes the pixels compared to clean
+    watermarked_bytes = renderer.render_page(str(path), "text/plain", 0, watermark="Confidential")
+    assert clean_bytes != watermarked_bytes
+

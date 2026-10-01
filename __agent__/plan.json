@@ -2,18 +2,18 @@
   "schema_version": 1,
   "items": [
     {
-      "title": "Inspect repository structure and documentation",
-      "status": "done"
-    },
-    {
-      "title": "Review implementation and tests",
+      "title": "inspect watermark implementation and app flow",
       "status": "in-progress"
     },
     {
-      "title": "Summarize the current project and planned direction",
+      "title": "design capture-only watermark approach",
+      "status": "pending"
+    },
+    {
+      "title": "implement and test the fix",
       "status": "pending"
     }
   ],
-  "updated_at": "2026-09-30T17:56:58.910Z",
-  "session_id": "01a0f353-138a-7019-9d9f-eb100c44f59e"
+  "updated_at": "2026-10-01T05:32:41.647Z",
+  "session_id": "01a0f5f2-9f8a-72e1-9e5a-c78b743c1217"
 }
