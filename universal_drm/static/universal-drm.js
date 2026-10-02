@@ -58,8 +58,10 @@
     const o = Object.assign({
       statusInterval: 15,
       watermark: '',
+      alwaysWatermark: false,
       onEnd: function () {},
-      blackoutOnCapture: true
+      blackoutOnCapture: true,
+      endOnCapture: false
     }, opts);
     const listeners = [], timers = [];
     const activePages = new Set();
@@ -177,14 +179,15 @@
       }
     }
 
-    // Dynamic watermark renderer: only draws during active capture (screenshot/recording),
-    // keeping the image 100% clean and unwatermarked during normal viewing on the webpage.
+    // Dynamic watermark renderer.
+    // alwaysWatermark=true: watermark is always visible (browser-mode shares).
+    // alwaysWatermark=false (default): watermark only shows during detected capture signals.
     function renderWatermarks() {
       if (ended) return;
+      const shouldDraw = o.alwaysWatermark || captureMode;
 
-      if (!captureMode) {
-        // Normal Viewing Mode: Completely clear watermark layer!
-        // The image on the webpage is 100% clean and unobstructed.
+      if (!shouldDraw) {
+        // Normal Viewing Mode (no alwaysWatermark): clear watermark layer.
         activePages.forEach(page => {
           const wmCanvas = page.querySelector('.udrm-wm-canvas');
           if (!wmCanvas || wmCanvas.width === 0 || wmCanvas.height === 0) return;
@@ -195,8 +198,8 @@
           const vCtx = videoOverlay.getContext('2d');
           vCtx.clearRect(0, 0, videoOverlay.width, videoOverlay.height);
         }
-      } else {
-        // Screenshot / Screen Capture Mode: Draw full-contrast watermark across all pages
+      } else if (o.watermark) {
+        // Capture mode or alwaysWatermark: draw full-contrast watermark.
         const currentStamp = stamp(o.watermark);
         const wmStyle = {
           fill: 'rgba(128, 128, 128, 0.45)',
@@ -241,7 +244,12 @@
     }
 
     // Copy routes & keystroke protections
-    ['contextmenu', 'dragstart', 'selectstart', 'copy', 'cut'].forEach(type => on(root, type, stop));
+    ['contextmenu', 'dragstart', 'selectstart'].forEach(type => on(root, type, stop));
+    // Clear clipboard on copy/cut attempts
+    ['copy', 'cut'].forEach(type => on(document, type, e => {
+      e.preventDefault();
+      if (navigator.clipboard) navigator.clipboard.writeText('').catch(() => {});
+    }));
 
     let modifierActive = false;
     on(document, 'keydown', e => {
@@ -287,12 +295,18 @@
     on(window, 'beforeprint', () => setCaptureMode(true, 5000));
     on(window, 'afterprint', () => setCaptureMode(false));
 
-    // Display capture hook
+    // Display capture hook: end the session when screen capture starts
     if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
       try {
         const origGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
         navigator.mediaDevices.getDisplayMedia = async function (...args) {
           setCaptureMode(true, 15000);
+          if (o.endOnCapture && o.statusUrl) {
+            fetch(o.statusUrl.replace('/status', '/end'), {
+              method: 'POST', credentials: 'same-origin'
+            }).catch(() => {});
+          }
+          if (o.endOnCapture) end('capture-detected');
           return origGetDisplayMedia(...args);
         };
       } catch (err) {}
